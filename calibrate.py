@@ -24,7 +24,29 @@ import predict_ensemble as pe
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLASSES = ["home_win", "draw", "away_win"]
 HOME_ADV = 65.0
-A_CACHE = os.path.join(HERE, "cache", "A_comp1000.pkl")
+CACHE_DIR = os.path.join(HERE, "cache")
+A_CACHE = os.path.join(CACHE_DIR, "A_comp1000.pkl")   # default / fallback
+
+
+def best_cached_config(gkeys, y):
+    """Among all fitted TabPFN configs in cache/, pick the one with the best group
+    backtest (accuracy first, log-loss as tiebreak). Falls back to comp1000."""
+    import glob
+    best, best_path = None, A_CACHE
+    for path in sorted(glob.glob(os.path.join(CACHE_DIR, "A_*.pkl"))):
+        df = pd.read_pickle(path)
+        g = df[df["outcome"].notna()]
+        pm = {(r.home_team, r.away_team): [r.p_home_win, r.p_draw, r.p_away_win]
+              for r in g.itertuples()}
+        if not all(k in pm for k in gkeys):
+            continue
+        M = np.array([pm[k] for k in gkeys])
+        score = (acc(y, M), -ll(y, M))   # higher is better
+        name = os.path.basename(path)[2:-4]
+        print(f"  config {name:16s} acc={acc(y, M):.0%} log-loss={ll(y, M):.3f}")
+        if best is None or score > best:
+            best, best_path = score, path
+    return best_path
 
 
 # ---- helpers ----------------------------------------------------------------
@@ -130,12 +152,18 @@ def fit_temp(y, P, grid=np.arange(0.6, 6.01, 0.1)):
 def main():
     feats = pe.load_feats()
     _, fixtures, actuals = pe.assemble()
-    A = pd.read_pickle(A_CACHE)
+
+    # establish backtest keys from the fallback config, then pick the best config
+    base = pd.read_pickle(A_CACHE)
+    Ag_df0 = base[base["outcome"].notna()]
+    gkeys = list(zip(Ag_df0["home_team"], Ag_df0["away_team"]))
+    y = Ag_df0["outcome"].values
+    print("Available TabPFN configs:")
+    A = pd.read_pickle(best_cached_config(gkeys, y))
 
     # --- group backtest arrays, shared key order ---
     Ag_df = A[A["outcome"].notna()]
-    gkeys = list(zip(Ag_df["home_team"], Ag_df["away_team"]))
-    y = Ag_df["outcome"].values
+    Ag_df = Ag_df.set_index(["home_team", "away_team"]).loc[gkeys].reset_index()
     Ag = Ag_df[["p_home_win", "p_draw", "p_away_win"]].values
     Bg = loo_poisson(gkeys)
     group_rows = feats[feats["tournament"].eq("FIFA World Cup") &
