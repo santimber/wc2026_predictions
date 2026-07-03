@@ -33,7 +33,7 @@ FIXTURES = [
     ("United States", "Belgium", "2026-07-06"),
     ("Spain", "Portugal", "2026-07-06"),
     ("Switzerland", "Colombia", "2026-07-07"),
-    ("Australia", "Argentina", "2026-07-07"),
+    ("Egypt", "Argentina", "2026-07-07"),   # Egypt beat Australia in R32
 ]
 OUT = os.path.join(HERE, "predictions_R16.csv")
 
